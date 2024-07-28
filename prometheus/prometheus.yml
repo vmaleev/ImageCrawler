@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+
+# dashboardID 6671
+scrape_configs:
+  - job_name: 'app'
+    static_configs:
+      - targets: ['app:8080']
+
+# dashboardID 14091
+  - job_name: 'redis'
+    static_configs:
+      - targets: [ 'redis-exporter:9121' ]
+
+# dashboardID 13502
+  - job_name: 'minio'
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: [ 'minio:9000' ]
