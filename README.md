@@ -70,7 +70,6 @@ Your challenge, should you choose to accept, is to write the `docker-compose.yml
 
 - The `docker-compose.yml` file must correctly establish the network connections between services.
 - Include volume management for persistent data storage where appropriate.
-- Ensure the application is secure and robust against common failures.
 
 ### Testing:
 
