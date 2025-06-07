@@ -8,20 +8,25 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 )
 
 func DownloadImages(pageURL string) ([]models.ImageBlob, error) {
-	imgURLs, _ := PageImageURLs(pageURL)
+	imgURLs, err := PageImageURLs(pageURL)
+	if err != nil {
+		return nil, err
+	}
 
 	var imageBlobs []models.ImageBlob
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	client := http.Client{Timeout: 15 * time.Second}
 	for _, imgURL := range imgURLs {
 		wg.Add(1)
 		go func(imgURL string) {
 			defer wg.Done()
 
-			imgResp, err := http.Get(imgURL)
+			imgResp, err := client.Get(imgURL)
 			if err != nil {
 				fmt.Printf("failed to download image: %v\n", err)
 				return
@@ -60,7 +65,8 @@ func DownloadImages(pageURL string) ([]models.ImageBlob, error) {
 func PageImageURLs(pageURL string) ([]models.ImageUrl, error) {
 	var imageUrls []models.ImageUrl
 
-	resp, err := http.Get(pageURL)
+	client := http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(pageURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch page: %v", err)
 	}

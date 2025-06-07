@@ -11,7 +11,7 @@ COPY . .
 RUN go build -o main .
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.20
 WORKDIR /root/s
 
 # Copy the built binary

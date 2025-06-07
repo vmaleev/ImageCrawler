@@ -57,7 +57,7 @@ func ProcessURL(c *gin.Context) {
 
 	imageBlobs, err := downloader.DownloadImages(req.URL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to download images ${er}"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download images: %v", err)})
 		return
 	}
 
