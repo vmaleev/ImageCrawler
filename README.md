@@ -31,6 +31,17 @@ The Image Processing API offers several endpoints that facilitate the uploading,
 
 Each operation is designed to be idempotent where applicable, ensuring that the system's state remains consistent even with repeated operations.
 
+### Environment Variables
+
+The API expects the following variables to be set:
+
+- `AWS_ACCESS_KEY_ID` – MinIO access key
+- `AWS_SECRET_ACCESS_KEY` – MinIO secret key
+- `AWS_REGION` – region used when creating the bucket
+- `S3_BUCKET` – bucket name for storing images
+- `S3_ENDPOINT` – endpoint of the MinIO service
+- `REDIS_ADDRESS` – address of the Redis instance
+
 ## Application Setup
 
 The application is designed to be run using Docker and Docker Compose, with services including MinIO, Redis, Prometheus, Grafana, and Nginx.
