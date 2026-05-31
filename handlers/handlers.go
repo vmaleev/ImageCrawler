@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -19,6 +18,10 @@ import (
 
 var s3Client = s3client.NewS3Client()
 var urlCache = cache.NewRedisCache()
+var downloadImages = downloader.DownloadImages
+var pageImageURLs = downloader.PageImageURLs
+
+const generateImageKeyErrorMessage = "Failed to generate image key"
 
 // CheckImages handles GET requests to check if images by URL already exist in S3
 func CheckImages(c *gin.Context) {
@@ -55,7 +58,7 @@ func ProcessURL(c *gin.Context) {
 		return
 	}
 
-	imageBlobs, err := downloader.DownloadImages(req.URL)
+	imageBlobs, err := downloadImages(req.URL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download images: %v", err)})
 		return
@@ -63,7 +66,11 @@ func ProcessURL(c *gin.Context) {
 
 	metadata := models.Metadata{URL: req.URL}
 	for _, img := range imageBlobs {
-		key := generateFileKey(img.URL)
+		key, err := generateFileKey(img.URL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
+			return
+		}
 		if err := s3Client.PutObject(key, img.Data); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image to S3"})
 			return
@@ -86,7 +93,7 @@ func UpdateURL(c *gin.Context) {
 	var imgToDelete []string
 
 	if urlCache.Exists(req.URL) {
-		pageImageUrls, err := downloader.PageImageURLs(req.URL)
+		pageImageUrls, err := pageImageURLs(req.URL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get images"})
 			return
@@ -112,7 +119,7 @@ func UpdateURL(c *gin.Context) {
 		}
 	}
 
-	imageBlobs, err := downloader.DownloadImages(req.URL)
+	imageBlobs, err := downloadImages(req.URL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to download images"})
 		return
@@ -121,7 +128,11 @@ func UpdateURL(c *gin.Context) {
 	metadata := models.Metadata{URL: req.URL}
 
 	for _, img := range imageBlobs {
-		key := generateFileKey(img.URL)
+		key, err := generateFileKey(img.URL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
+			return
+		}
 		if err := s3Client.PutObject(key, img.Data); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image to S3"})
 			return
@@ -142,23 +153,27 @@ func contains(imgUrl string, imageArr []models.ImageUrl) bool {
 	return false
 }
 
-func generateFileKey(imgURL string) string {
+func generateFileKey(imgURL string) (string, error) {
 	iurl, err := url.Parse(imgURL)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 	hostname := strings.TrimPrefix(iurl.Hostname(), "www.")
-	return fmt.Sprintf("images/%s/%s", deterministicGUID(hostname), path.Base(imgURL))
+	guid, err := deterministicGUID(hostname)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("images/%s/%s", guid, path.Base(imgURL)), nil
 }
 
-func deterministicGUID(pageUrl string) string {
+func deterministicGUID(pageURL string) (string, error) {
 	md5hash := md5.New()
-	md5hash.Write([]byte(pageUrl))
+	md5hash.Write([]byte(pageURL))
 	md5string := hex.EncodeToString(md5hash.Sum(nil))
 
 	hostUuid, err := uuid.FromBytes([]byte(md5string[0:16]))
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
-	return hostUuid.String()
+	return hostUuid.String(), nil
 }
