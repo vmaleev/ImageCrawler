@@ -45,7 +45,7 @@ func TestProcessURLInvalidImageURLReturnsServerError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
 	}
-	if body := w.Body.String(); body != "{\"error\":\"Failed to generate image key\"}" {
+	if body := w.Body.String(); body != "{\"error\":\""+generateImageKeyErrorMessage+"\"}" {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
@@ -61,7 +61,7 @@ func TestUpdateURLInvalidImageURLReturnsServerError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
 	}
-	if body := w.Body.String(); body != "{\"error\":\"Failed to generate image key\"}" {
+	if body := w.Body.String(); body != "{\"error\":\""+generateImageKeyErrorMessage+"\"}" {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }

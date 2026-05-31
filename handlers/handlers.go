@@ -21,6 +21,8 @@ var urlCache = cache.NewRedisCache()
 var downloadImages = downloader.DownloadImages
 var pageImageURLs = downloader.PageImageURLs
 
+const generateImageKeyErrorMessage = "Failed to generate image key"
+
 // CheckImages handles GET requests to check if images by URL already exist in S3
 func CheckImages(c *gin.Context) {
 	pageURL := c.Query("url")
@@ -66,7 +68,7 @@ func ProcessURL(c *gin.Context) {
 	for _, img := range imageBlobs {
 		key, err := generateFileKey(img.URL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate image key"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
 			return
 		}
 		if err := s3Client.PutObject(key, img.Data); err != nil {
@@ -128,7 +130,7 @@ func UpdateURL(c *gin.Context) {
 	for _, img := range imageBlobs {
 		key, err := generateFileKey(img.URL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate image key"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
 			return
 		}
 		if err := s3Client.PutObject(key, img.Data); err != nil {
@@ -164,9 +166,9 @@ func generateFileKey(imgURL string) (string, error) {
 	return fmt.Sprintf("images/%s/%s", guid, path.Base(imgURL)), nil
 }
 
-func deterministicGUID(pageUrl string) (string, error) {
+func deterministicGUID(pageURL string) (string, error) {
 	md5hash := md5.New()
-	md5hash.Write([]byte(pageUrl))
+	md5hash.Write([]byte(pageURL))
 	md5string := hex.EncodeToString(md5hash.Sum(nil))
 
 	hostUuid, err := uuid.FromBytes([]byte(md5string[0:16]))
