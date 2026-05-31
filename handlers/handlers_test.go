@@ -3,13 +3,11 @@ package handlers
 import (
 	"ImageCrawler/models"
 	"bytes"
-	"crypto/md5"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func TestDeterministicGUIDConsistency(t *testing.T) {
@@ -25,9 +23,8 @@ func TestDeterministicGUIDConsistency(t *testing.T) {
 }
 
 func TestDeterministicGUIDUsesMD5Bytes(t *testing.T) {
-	host := "example.com"
-	hash := md5.Sum([]byte(host))
-	expected := uuid.Must(uuid.FromBytes(hash[:])).String()
+	const host = "example.com"
+	const expected = "5ababd60-3b22-7803-02dd-8d83498e5172"
 
 	if actual := deterministicGUID(host); actual != expected {
 		t.Fatalf("expected GUID %s, got %s", expected, actual)

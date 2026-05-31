@@ -162,7 +162,7 @@ func generateFileKey(imgURL string) (string, error) {
 	return fmt.Sprintf("images/%s/%s", guid, path.Base(imgURL)), nil
 }
 
-func deterministicGUID(pageURL string) string {
-	hash := md5.Sum([]byte(pageURL))
+func deterministicGUID(hostname string) string {
+	hash := md5.Sum([]byte(hostname))
 	return uuid.Must(uuid.FromBytes(hash[:])).String()
 }
