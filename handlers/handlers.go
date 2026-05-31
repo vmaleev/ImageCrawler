@@ -1,45 +1,54 @@
 package handlers
 
 import (
-	"ImageCrawler/cache"
-	"ImageCrawler/downloader"
 	"ImageCrawler/models"
-	"ImageCrawler/s3client"
 	"crypto/md5"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-var s3Client *s3client.S3Client
-var urlCache *cache.RedisCache
-var downloadImages = downloader.DownloadImages
-var pageImageURLs = downloader.PageImageURLs
+type Cache interface {
+	Get(key string) (models.Metadata, bool)
+	Set(key string, val models.Metadata)
+	Exists(key string) bool
+	Invalidate(key string)
+}
+
+type Storage interface {
+	PutObject(key string, data []byte) error
+	RemoveObject(key string) error
+}
+
+type DownloadImagesFunc func(pageURL string) ([]models.ImageBlob, error)
+
+type PageImageURLsFunc func(pageURL string) ([]models.ImageUrl, error)
+
+type Handler struct {
+	storage        Storage
+	cache          Cache
+	downloadImages DownloadImagesFunc
+	pageImageURLs  PageImageURLsFunc
+}
+
+func New(storage Storage, cache Cache, downloadImages DownloadImagesFunc, pageImageURLs PageImageURLsFunc) *Handler {
+	return &Handler{
+		storage:        storage,
+		cache:          cache,
+		downloadImages: downloadImages,
+		pageImageURLs:  pageImageURLs,
+	}
+}
 
 const generateImageKeyErrorMessage = "Failed to generate image key"
 
-func InitDependencies() error {
-	var err error
-
-	s3Client, err = s3client.NewS3Client()
-	if err != nil {
-		return fmt.Errorf("initialize S3 client: %w", err)
-	}
-
-	urlCache, err = cache.NewRedisCache()
-	if err != nil {
-		return fmt.Errorf("initialize Redis cache: %w", err)
-	}
-
-	return nil
-}
-
 // CheckImages handles GET requests to check if images by URL already exist in S3
-func CheckImages(c *gin.Context) {
+func (h *Handler) CheckImages(c *gin.Context) {
 	pageURL := c.Query("url")
 	if pageURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "URL query parameter is required"})
@@ -47,7 +56,7 @@ func CheckImages(c *gin.Context) {
 	}
 
 	// Check the cache first
-	metadata, found := urlCache.Get(pageURL)
+	metadata, found := h.cache.Get(pageURL)
 	if !found {
 		c.JSON(404, gin.H{"code": "PAGE_NOT_FOUND", "message": "Page not found"})
 		return
@@ -61,19 +70,19 @@ func CheckImages(c *gin.Context) {
 }
 
 // ProcessURL handles POST requests to process a new URL and upload images to S3
-func ProcessURL(c *gin.Context) {
+func (h *Handler) ProcessURL(c *gin.Context) {
 	var req models.URLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	if urlCache.Exists(req.URL) {
+	if h.cache.Exists(req.URL) {
 		c.JSON(http.StatusConflict, gin.H{"error": "URL already processed"})
 		return
 	}
 
-	imageBlobs, err := downloadImages(req.URL)
+	imageBlobs, err := h.downloadImages(req.URL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download images: %v", err)})
 		return
@@ -86,19 +95,19 @@ func ProcessURL(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
 			return
 		}
-		if err := s3Client.PutObject(key, img.Data); err != nil {
+		if err := h.storage.PutObject(key, img.Data); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image to S3"})
 			return
 		}
 		metadata.Images = append(metadata.Images, models.Image{Key: key, URL: img.URL})
 	}
 
-	urlCache.Set(req.URL, metadata)
+	h.cache.Set(req.URL, metadata)
 	c.JSON(http.StatusOK, gin.H{"message": "Images uploaded successfully"})
 }
 
 // UpdateURL handles PUT requests to update an existing URL or create new if it doesn't exist
-func UpdateURL(c *gin.Context) {
+func (h *Handler) UpdateURL(c *gin.Context) {
 	var req models.URLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -107,14 +116,14 @@ func UpdateURL(c *gin.Context) {
 
 	var imgToDelete []string
 
-	if urlCache.Exists(req.URL) {
-		pageImageUrls, err := pageImageURLs(req.URL)
+	if h.cache.Exists(req.URL) {
+		pageImageUrls, err := h.pageImageURLs(req.URL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get images"})
 			return
 		}
 
-		metadata, found := urlCache.Get(req.URL)
+		metadata, found := h.cache.Get(req.URL)
 		if !found {
 			c.JSON(404, gin.H{"code": "PAGE_NOT_FOUND", "message": "Page not found"})
 			return
@@ -128,13 +137,13 @@ func UpdateURL(c *gin.Context) {
 	}
 
 	for _, imgtoDel := range imgToDelete {
-		if err := s3Client.RemoveObject(imgtoDel); err != nil {
+		if err := h.storage.RemoveObject(imgtoDel); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old images from S3"})
 			return
 		}
 	}
 
-	imageBlobs, err := downloadImages(req.URL)
+	imageBlobs, err := h.downloadImages(req.URL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to download images"})
 		return
@@ -148,14 +157,14 @@ func UpdateURL(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": generateImageKeyErrorMessage})
 			return
 		}
-		if err := s3Client.PutObject(key, img.Data); err != nil {
+		if err := h.storage.PutObject(key, img.Data); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload image to S3"})
 			return
 		}
 		metadata.Images = append(metadata.Images, models.Image{Key: key, URL: img.URL})
 	}
 
-	urlCache.Set(req.URL, metadata)
+	h.cache.Set(req.URL, metadata)
 	c.JSON(http.StatusOK, gin.H{"message": "Images updated successfully"})
 }
 
