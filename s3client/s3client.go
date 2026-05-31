@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"io"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type S3Client struct {
@@ -16,38 +18,63 @@ type S3Client struct {
 	BucketName string
 }
 
-func NewS3Client() *S3Client {
-	endpoint := os.Getenv("S3_ENDPOINT")
-	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	bucketName := os.Getenv("S3_BUCKET")
+func NewS3Client() (*S3Client, error) {
+	endpoint, err := requiredEnv("S3_ENDPOINT")
+	if err != nil {
+		return nil, err
+	}
+	accessKeyID, err := requiredEnv("AWS_ACCESS_KEY_ID")
+	if err != nil {
+		return nil, err
+	}
+	secretAccessKey, err := requiredEnv("AWS_SECRET_ACCESS_KEY")
+	if err != nil {
+		return nil, err
+	}
+	region, err := requiredEnv("AWS_REGION")
+	if err != nil {
+		return nil, err
+	}
+	bucketName, err := requiredEnv("S3_BUCKET")
+	if err != nil {
+		return nil, err
+	}
 
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: false,
 	})
 	if err != nil {
-		println(err)
+		return nil, fmt.Errorf("create S3 client: %w", err)
 	}
 
-	found, err := client.BucketExists(context.Background(), bucketName)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	found, err := client.BucketExists(ctx, bucketName)
 	if err != nil {
-		fmt.Println("No S3 storage found")
+		return nil, fmt.Errorf("check S3 bucket %q: %w", bucketName, err)
 	}
 
 	if !found {
-		err = client.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+		err = client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{Region: region})
 		if err != nil {
-			fmt.Println("No S3 storage found, can't create S3 bucket")
-		} else {
-			fmt.Println("Bucket created")
+			return nil, fmt.Errorf("create S3 bucket %q: %w", bucketName, err)
 		}
 	}
 
 	return &S3Client{
 		Client:     client,
 		BucketName: bucketName,
+	}, nil
+}
+
+func requiredEnv(name string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return "", fmt.Errorf("%s environment variable is required", name)
 	}
+	return value, nil
 }
 
 func (s *S3Client) PutObject(key string, data []byte) error {
