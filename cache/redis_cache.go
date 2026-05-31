@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-redis/redis/v8"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type RedisCache struct {
@@ -16,13 +19,25 @@ type RedisCache struct {
 
 var ctx = context.Background()
 
-func NewRedisCache() *RedisCache {
-	redisAddr := os.Getenv("REDIS_ADDRESS")
+func NewRedisCache() (*RedisCache, error) {
+	redisAddr := strings.TrimSpace(os.Getenv("REDIS_ADDRESS"))
+	if redisAddr == "" {
+		return nil, errors.New("REDIS_ADDRESS environment variable is required")
+	}
+
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
 
-	return &RedisCache{client: client}
+	pingCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("connect to Redis at %q: %w", redisAddr, err)
+	}
+
+	return &RedisCache{client: client}, nil
 }
 
 func (r *RedisCache) Get(key string) (models.Metadata, bool) {

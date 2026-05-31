@@ -15,12 +15,28 @@ import (
 	"strings"
 )
 
-var s3Client = s3client.NewS3Client()
-var urlCache = cache.NewRedisCache()
+var s3Client *s3client.S3Client
+var urlCache *cache.RedisCache
 var downloadImages = downloader.DownloadImages
 var pageImageURLs = downloader.PageImageURLs
 
 const generateImageKeyErrorMessage = "Failed to generate image key"
+
+func InitDependencies() error {
+	var err error
+
+	s3Client, err = s3client.NewS3Client()
+	if err != nil {
+		return fmt.Errorf("initialize S3 client: %w", err)
+	}
+
+	urlCache, err = cache.NewRedisCache()
+	if err != nil {
+		return fmt.Errorf("initialize Redis cache: %w", err)
+	}
+
+	return nil
+}
 
 // CheckImages handles GET requests to check if images by URL already exist in S3
 func CheckImages(c *gin.Context) {
