@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"ImageCrawler/models"
+	"ImageCrawler/safeurl"
 	"fmt"
 	"golang.org/x/net/html"
 	"io"
@@ -10,6 +11,9 @@ import (
 	"sync"
 	"time"
 )
+
+// httpTimeout bounds each outbound request (page fetch or image download).
+const httpTimeout = 15 * time.Second
 
 func DownloadImages(pageURL string) ([]models.ImageBlob, error) {
 	imgURLs, err := PageImageURLs(pageURL)
@@ -20,11 +24,16 @@ func DownloadImages(pageURL string) ([]models.ImageBlob, error) {
 	var imageBlobs []models.ImageBlob
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	client := http.Client{Timeout: 15 * time.Second}
+	client := safeurl.NewSafeClient(httpTimeout)
 	for _, imgURL := range imgURLs {
 		wg.Add(1)
 		go func(imgURL string) {
 			defer wg.Done()
+
+			if err := safeurl.ValidateURL(imgURL); err != nil {
+				fmt.Printf("skipping image with invalid URL %q: %v\n", imgURL, err)
+				return
+			}
 
 			imgResp, err := client.Get(imgURL)
 			if err != nil {
@@ -65,7 +74,11 @@ func DownloadImages(pageURL string) ([]models.ImageBlob, error) {
 func PageImageURLs(pageURL string) ([]models.ImageUrl, error) {
 	var imageUrls []models.ImageUrl
 
-	client := http.Client{Timeout: 15 * time.Second}
+	if err := safeurl.ValidateURL(pageURL); err != nil {
+		return nil, fmt.Errorf("invalid page URL: %w", err)
+	}
+
+	client := safeurl.NewSafeClient(httpTimeout)
 	resp, err := client.Get(pageURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch page: %v", err)

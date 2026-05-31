@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"ImageCrawler/models"
+	"ImageCrawler/safeurl"
 	"crypto/md5"
 	"fmt"
 	"net/http"
@@ -77,6 +78,11 @@ func (h *Handler) ProcessURL(c *gin.Context) {
 		return
 	}
 
+	if err := safeurl.ValidateURL(req.URL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid URL: %v", err)})
+		return
+	}
+
 	if h.cache.Exists(req.URL) {
 		c.JSON(http.StatusConflict, gin.H{"error": "URL already processed"})
 		return
@@ -111,6 +117,11 @@ func (h *Handler) UpdateURL(c *gin.Context) {
 	var req models.URLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if err := safeurl.ValidateURL(req.URL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid URL: %v", err)})
 		return
 	}
 
