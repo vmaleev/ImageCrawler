@@ -12,19 +12,22 @@ import (
 
 func TestDeterministicGUIDConsistency(t *testing.T) {
 	host := "example.com"
-	id1, err := deterministicGUID(host)
-	if err != nil {
-		t.Fatalf("deterministicGUID returned error: %v", err)
-	}
-	id2, err := deterministicGUID(host)
-	if err != nil {
-		t.Fatalf("deterministicGUID returned error: %v", err)
-	}
+	id1 := deterministicGUID(host)
+	id2 := deterministicGUID(host)
 	if id1 != id2 {
 		t.Fatalf("expected identical GUIDs, got %s and %s", id1, id2)
 	}
 	if len(id1) == 0 {
 		t.Fatalf("GUID should not be empty")
+	}
+}
+
+func TestDeterministicGUIDUsesMD5Bytes(t *testing.T) {
+	const host = "example.com"
+	const expected = "5ababd60-3b22-7803-02dd-8d83498e5172"
+
+	if actual := deterministicGUID(host); actual != expected {
+		t.Fatalf("expected GUID %s, got %s", expected, actual)
 	}
 }
 

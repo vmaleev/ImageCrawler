@@ -6,7 +6,6 @@ import (
 	"ImageCrawler/models"
 	"ImageCrawler/s3client"
 	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -159,21 +158,11 @@ func generateFileKey(imgURL string) (string, error) {
 		return "", err
 	}
 	hostname := strings.TrimPrefix(iurl.Hostname(), "www.")
-	guid, err := deterministicGUID(hostname)
-	if err != nil {
-		return "", err
-	}
+	guid := deterministicGUID(hostname)
 	return fmt.Sprintf("images/%s/%s", guid, path.Base(imgURL)), nil
 }
 
-func deterministicGUID(pageURL string) (string, error) {
-	md5hash := md5.New()
-	md5hash.Write([]byte(pageURL))
-	md5string := hex.EncodeToString(md5hash.Sum(nil))
-
-	hostUuid, err := uuid.FromBytes([]byte(md5string[0:16]))
-	if err != nil {
-		return "", err
-	}
-	return hostUuid.String(), nil
+func deterministicGUID(hostname string) string {
+	hash := md5.Sum([]byte(hostname))
+	return uuid.Must(uuid.FromBytes(hash[:])).String()
 }
