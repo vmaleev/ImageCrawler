@@ -1,7 +1,10 @@
 package main
 
 import (
+	"ImageCrawler/cache"
+	"ImageCrawler/downloader"
 	"ImageCrawler/handlers"
+	"ImageCrawler/s3client"
 	"log"
 
 	"github.com/fufuok/favicon"
@@ -10,9 +13,17 @@ import (
 )
 
 func main() {
-	if err := handlers.InitDependencies(); err != nil {
-		log.Fatalf("failed to initialize dependencies: %v", err)
+	s3Client, err := s3client.NewS3Client()
+	if err != nil {
+		log.Fatalf("failed to initialize S3 client: %v", err)
 	}
+
+	urlCache, err := cache.NewRedisCache()
+	if err != nil {
+		log.Fatalf("failed to initialize Redis cache: %v", err)
+	}
+
+	h := handlers.New(s3Client, urlCache, downloader.DownloadImages, downloader.PageImageURLs)
 
 	var favData []byte
 	r := gin.Default()
@@ -25,11 +36,11 @@ func main() {
 		FileData: favData,
 	}))
 
-	r.GET("/images", handlers.CheckImages)
-	r.POST("/images", handlers.ProcessURL)
-	r.PUT("/images", handlers.UpdateURL)
+	r.GET("/images", h.CheckImages)
+	r.POST("/images", h.ProcessURL)
+	r.PUT("/images", h.UpdateURL)
 
-	err := r.Run(":8080")
+	err = r.Run(":8080")
 	if err != nil {
 		return
 	}
